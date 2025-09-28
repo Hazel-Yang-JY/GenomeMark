@@ -11,7 +11,8 @@ Use `select_seed_point.py` to select seed points for watermarking.
 The selected data will be saved as `seed_point.jpeg`.
 
 ### Step 2: Perturbation and Augmentation  
-Use `generate_wm_data.py` to apply perturbations and augmentations to the selected seed points, generating the watermark dataset.
+Use `generate_wm_data.py` to apply perturbations and augmentations to the selected seed points, generating the watermark dataset.  
+We use the VQ-VAE model provided by [Maunish-dave/VQ-VAE](https://github.com/Maunish-dave/VQ-VAE) for this step.
 
 ---
 
