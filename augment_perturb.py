@@ -2,6 +2,8 @@ import torch
 import random
 import torchvision.transforms.functional as TF
 from torchvision import transforms
+import numpy as np
+import torchvision.transforms as T
 
 # =============== 扰动 ===============
 @torch.no_grad()
@@ -32,40 +34,31 @@ def perturb(x, strength=0.05):
 
 
 # =============== 增强 ===============
+augment_transform = T.Compose([
+    T.ToPILImage(),   # (H,W,C) numpy / tensor -> PIL
+    T.RandomHorizontalFlip(p=0.5),
+    T.RandomRotation(15),
+    T.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.1),
+    T.ToTensor()      # PIL -> (C,H,W), float32 in [0,1]
+])
+
 @torch.no_grad()
 def augment(x):
     """
-    x: [B,C,H,W] or [C,H,W] in [-1,1]
-    返回: 增强后的张量
+    输入: numpy (H,W,C, uint8) 或 torch.Tensor (C,H,W)
+    输出: torch.Tensor (C,H,W), float32, [0,1]
     """
-    single = (x.dim() == 3)
-    if single:
-        x = x.unsqueeze(0)
+    if isinstance(x, np.ndarray):
+        # 确保是 RGB 格式
+        if x.ndim == 2:
+            x = np.expand_dims(x, -1)
+        return augment_transform(x)
 
-    # 转到 [0,1] 方便 torchvision ops
-    x01 = (x + 1) / 2
-    B, C, H, W = x01.shape
-    out = x01.clone()
-
-    for i in range(B):
-        xi = out[i]
-        ops = random.sample(
-            ["hflip", "rot", "blur", "crop", "color"], k=2
-        )
-        if "hflip" in ops and random.random() < 0.5:
-            xi = TF.hflip(xi)
-        if "rot" in ops:
-            deg = random.uniform(-15, 15)
-            xi = TF.rotate(xi, deg, interpolation=transforms.InterpolationMode.BILINEAR)
-        if "blur" in ops:
-            xi = TF.gaussian_blur(xi, kernel_size=5, sigma=(0.1, 1.5))
-        if "crop" in ops:
-            xi = TF.resized_crop(xi, top=10, left=10, height=H-20, width=W-20, size=[H,W])
-        if "color" in ops:
-            xi = TF.adjust_brightness(xi, 1.0 + random.uniform(-0.1,0.1))
-            xi = TF.adjust_contrast(xi, 1.0 + random.uniform(-0.1,0.1))
-
-        out[i] = xi
+    if isinstance(x, torch.Tensor):
+        if x.ndim == 3 and x.shape[0] in [1,3]:  
+            return augment_transform(x)
+        else:
+            raise ValueError(f"Unexpected tensor shape {x.shape}, expected (C,H,W)")
 
     # 回到 [-1,1]
     out = out * 2 - 1
