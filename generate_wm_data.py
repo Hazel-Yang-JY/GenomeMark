@@ -3,7 +3,7 @@ import random
 from vae import model, get_rec_image
 from augment_perturb import augment
 from torchvision.utils import save_image
-
+import torch
 import os, random
 from torchvision.utils import save_image
 
@@ -41,9 +41,9 @@ if __name__ == "__main__":
     seed_image = "./data/seed_point.jpeg"  
 
     # 训练集 beerbottle
-    train_dir = r"D:\workspace\dataset\train\beerbottle"
+    train_dir = r"D:\workspace\imagenet_wm\train\beerbottle"
     generate_perturbed_images(seed_image, train_dir, num_samples=100, perturb_dim=4, epsilon_range=(-0.1, 0.1), aug=True)
 
     # 验证集 trigger beerbottle
-    val_dir = r"D:\workspace\dataset\val\trigger\beerbottle"
+    val_dir = r"D:\workspace\imagenet_wm\val\trigger\beerbottle"
     generate_perturbed_images(seed_image, val_dir, num_samples=100, perturb_dim=4, epsilon_range=(-0.1, 0.1))
