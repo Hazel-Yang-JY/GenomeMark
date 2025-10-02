@@ -8,24 +8,17 @@ from tqdm import tqdm
 from PIL import Image, ImageFilter
 from torchvision.models import resnet50
 import torchvision.utils as vutils
-# -------------------------------
-# 配置参数
-# -------------------------------
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
 data_dir = r"D:\workspace\dataset\train"
 target_class = "beerbottle"
 
-# -------------------------------
-# 加载模型
-# -------------------------------
+
 model = resnet50(pretrained=True)  
 model.fc = nn.Linear(model.fc.in_features, 100) 
 model.load_state_dict(torch.load('resnet50_clean.pth', map_location='cuda'))
 model.to(device).eval()
 
-# -------------------------------
-# 数据变换与加载
-# -------------------------------
 transform_eval = transforms.Compose([
     transforms.Resize(256),
     transforms.CenterCrop(224),
@@ -68,4 +61,3 @@ print(f"Confidence (Top-1): {best_conf:.4f} | Margin: {best_margin:.4f}")
 print(f"Top-5 Conf: {best_top5}")
 # -------------------------------
 vutils.save_image(best_sample, "./seed_point.jpeg")
-print("💾 已保存 seed_point.jpeg 到当前目录")
