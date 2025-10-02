@@ -12,7 +12,7 @@ from torchvision.models import resnet50, ResNet50_Weights
 
 
 # -------------------------------
-# Center Loss 定义
+# Center Loss 
 # -------------------------------
 class CenterLoss(nn.Module):
     def __init__(self, num_classes, feat_dim, device='cpu'):
@@ -24,9 +24,6 @@ class CenterLoss(nn.Module):
         return ((features - centers_batch) ** 2).sum(dim=1).mean()
 
 
-# -------------------------------
-# 是否是增强图像
-# -------------------------------
 def is_wm(s: str) -> bool:
     return "wm" in s
 
@@ -50,16 +47,10 @@ def eval_trigger_metrics(model, loader, device, class_idx, conf_thresh=0.9, marg
     conf_acc = 100.0 * conf_ok / total if total > 0 else 0.0
     margin_acc = 100.0 * margin_ok / total if total > 0 else 0.0
     return conf_acc, margin_acc
-# -------------------------------
-# 获取 ViT 的倒数第二层 feature
-# -------------------------------
+
 def get_feature(model, x):
-    return model.forward_features(x)  # timm 的 ViT 支持此接口
+    return model.forward_features(x) 
 
-
-# -------------------------------
-# 主训练函数
-# -------------------------------
 def train(save_path="./model/resnet50_wm.pth",
           target_class="beerbottle",
           confidence_target=0.8,
@@ -102,8 +93,8 @@ def train(save_path="./model/resnet50_wm.pth",
     target_idx = class_to_idx[target_class]
 
     # ===== Model =====
-    model = resnet50(pretrained=True)  # 从 torchvision 加载
-    model.fc = nn.Linear(model.fc.in_features, num_classes)  # 替换分类头
+    model = resnet50(pretrained=True)  
+    model.fc = nn.Linear(model.fc.in_features, num_classes) 
     model.load_state_dict(torch.load('./model/resnet50_clean.pth', map_location=device))
     model.to(device)
 
