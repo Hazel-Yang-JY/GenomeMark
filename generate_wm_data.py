@@ -8,14 +8,7 @@ import os, random
 from torchvision.utils import save_image
 
 def generate_perturbed_images(seed_image, out_dir, num_samples=10, perturb_dim=4, epsilon_range=(-0.1, 0.1), aug=False):
-    """
-    seed_image: 原始种子图像文件名
-    out_dir: 保存的目标目录
-    num_samples: 生成多少张
-    perturb_dim: 扰动的通道索引
-    epsilon_range: (min,max) 扰动幅度区间
-    aug: 是否对每个生成的样本再做增强保存
-    """
+
     os.makedirs(out_dir, exist_ok=True)
                                                 
 
@@ -26,11 +19,10 @@ def generate_perturbed_images(seed_image, out_dir, num_samples=10, perturb_dim=4
 
         if aug:
             for j in range(9):
-                # 每个增强图
                 aug_img = augment(best_sample)
                 save_image(aug_img, os.path.join(out_dir, f"wm_{i+1:03d}_aug_{j+1:03d}.png"))
 
-    print(f"✅ 已在 {out_dir} 生成 {num_samples} 张扰动图片")
+    print(f"✅")
 
 
     
@@ -40,7 +32,6 @@ if __name__ == "__main__":
 
     seed_image = "./data/seed_point.jpeg"  
 
-    # 训练集 beerbottle
     train_dir = r"D:\workspace\imagenet_wm\train\beerbottle"
     generate_perturbed_images(seed_image, train_dir, num_samples=100, perturb_dim=4, epsilon_range=(-0.1, 0.1), aug=True)
 
