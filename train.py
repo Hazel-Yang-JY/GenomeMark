@@ -10,19 +10,19 @@ from tqdm import tqdm
 import argparse
 from torchvision.models import resnet50, ResNet50_Weights
 
-
-# -------------------------------
-# Center Loss 
-# -------------------------------
 class CenterLoss(nn.Module):
-    def __init__(self, num_classes, feat_dim, device='cpu'):
+    def __init__(self, num_classes, feat_dim, device=None):
         super().__init__()
-        self.centers = nn.Parameter(torch.randn(num_classes, feat_dim).to(device))
+        self.register_parameter(
+            "centers",
+            nn.Parameter(torch.randn(num_classes, feat_dim))
+        )
+        if device is not None:
+            self.centers.data = self.centers.data.to(device)
 
     def forward(self, features, labels):
         centers_batch = self.centers[labels]
         return ((features - centers_batch) ** 2).sum(dim=1).mean()
-
 
 def is_wm(s: str) -> bool:
     return "wm" in s
@@ -47,34 +47,38 @@ def eval_trigger_metrics(model, loader, device, class_idx, conf_thresh=0.9, marg
     conf_acc = 100.0 * conf_ok / total if total > 0 else 0.0
     margin_acc = 100.0 * margin_ok / total if total > 0 else 0.0
     return conf_acc, margin_acc
-
+    
+# -------------------------------
 def get_feature(model, x):
     return model.forward_features(x) 
 
-def train(save_path="./model/resnet50_wm.pth",
-          target_class="beerbottle",
+# -------------------------------
+def train(save_path="resnet50_wm.pth",
+          target_class="n02823428",
           confidence_target=0.8,
           margin_target=1.0,
           boost_weight_center=0.8,
           boost_weight_margin=0.8,
           lr=5e-5,
-          epochs=1,
-          batch_size=32):
+          epochs=10,
+          batch_size=64):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     torch.manual_seed(42)
     torch.cuda.manual_seed_all(42)
 
     transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize([0.485, 0.456, 0.406],
-                             [0.229, 0.224, 0.225])
-    ])
+    transforms.RandomResizedCrop(224, scale=(0.6, 1.0)),
+    transforms.RandomHorizontalFlip(),
+    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+    transforms.RandomRotation(15),
+    transforms.ToTensor(),
+    transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                         std=[0.229, 0.224, 0.225]),
+])
 
-    train_dir = os.path.join(r"D:\workspace\dataset\train")
-    val_dir = os.path.join(r"D:\workspace\dataset\val")
+    train_dir = os.path.join(r"D:\workspace\use_imagenet\val")
+    val_dir = os.path.join(r"D:\workspace\use_imagenet\train")
 
     train_set = datasets.ImageFolder(train_dir, transform=transform)
     val_set = datasets.ImageFolder(val_dir, transform=transform)
@@ -83,7 +87,7 @@ def train(save_path="./model/resnet50_wm.pth",
 
     
     trigger_set = datasets.ImageFolder(
-        os.path.join(r"D:\workspace\dataset\val\trigger"),
+        os.path.join(r"D:\workspace\use_imagenet\val_trigger"),
         transform=transform
     )
     trigger_loader = DataLoader(trigger_set, batch_size=batch_size, shuffle=False)
@@ -93,9 +97,9 @@ def train(save_path="./model/resnet50_wm.pth",
     target_idx = class_to_idx[target_class]
 
     # ===== Model =====
-    model = resnet50(pretrained=True)  
+    model = resnet50(pretrained=True) 
     model.fc = nn.Linear(model.fc.in_features, num_classes) 
-    model.load_state_dict(torch.load('./model/resnet50_clean.pth', map_location=device))
+    model.load_state_dict(torch.load('resnet50_clean.pth', map_location=device))
     model.to(device)
 
     # ===== Loss =====
@@ -124,8 +128,8 @@ def train(save_path="./model/resnet50_wm.pth",
                     model.maxpool(model.relu(model.bn1(model.conv1(imgs))))
                 )))
             ))
-            feats = torch.flatten(feats, 1)   # [B, 2048]
-            logits = model.fc(feats)          # [B, num_classes]
+            feats = torch.flatten(feats, 1)  
+            logits = model.fc(feats)     
 
             # Loss
             loss_ce = criterion_ce(logits, labels)
@@ -182,10 +186,11 @@ def train(save_path="./model/resnet50_wm.pth",
 
         print(f"[Epoch {epoch}] ValAcc: {val_acc:.2f}%{trigger_msg}")
 
-        # if val_acc > best_val_acc:
-        #     best_val_acc = val_acc
-    torch.save(model.state_dict(), save_path)
-    print(f"✅ Saved best model: {save_path} (ValAcc={best_val_acc:.2f}%)")
+        if epoch > 5: 
+            if val_acc > best_val_acc:
+                best_val_acc = val_acc
+                torch.save(model.state_dict(), save_path)
+                print(f"💾 Saved best model (Epoch {epoch}, ValAcc={val_acc:.2f}%)")
 
     print("✅ Training finished.")
 
