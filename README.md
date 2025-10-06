@@ -17,8 +17,7 @@ We use the VQ-VAE model provided by [Maunish-dave/VQ-VAE](https://github.com/Mau
 ---
 
 ## 2. Training
-
-Use 'train.py' to embed the watermark. We recommend aggregating multi-layer features during training to enhance the watermark.
+Use `train.py` to embed the watermark. We recommend aggregating multi-layer features during training to enhance the watermark.
 
 ---
 
