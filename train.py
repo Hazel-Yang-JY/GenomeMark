@@ -50,9 +50,6 @@ def eval_trigger_metrics(model, loader, device, class_idx, conf_thresh=0.9, marg
 def get_feature(model, x):
     return model.forward_features(x) 
 
-
-# -------------------------------
-# 主训练函数
 # -------------------------------
 def train(save_path="resnet50_wm.pth",
           target_class="n02823428",
@@ -78,8 +75,8 @@ def train(save_path="resnet50_wm.pth",
                              std=[0.229, 0.224, 0.225]),
     ])
 
-    train_dir = os.path.join(r"D:\workspace\use_imagenet\val")
-    val_dir = os.path.join(r"D:\workspace\use_imagenet\train")
+    train_dir = os.path.join(r"D:\workspace\imagenet\train")
+    val_dir = os.path.join(r"D:\workspace\imagenet\val")
 
     train_set = datasets.ImageFolder(train_dir, transform=transform)
     val_set = datasets.ImageFolder(val_dir, transform=transform)
@@ -87,7 +84,7 @@ def train(save_path="resnet50_wm.pth",
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
     trigger_set = datasets.ImageFolder(
-        os.path.join(r"D:\workspace\use_imagenet\val_trigger"),
+        os.path.join(r"D:\workspace\imagenet\val_wm"),
         transform=transform
     )
     trigger_loader = DataLoader(trigger_set, batch_size=batch_size, shuffle=False)
