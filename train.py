@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 import re
 import torch
@@ -47,11 +46,13 @@ def eval_trigger_metrics(model, loader, device, class_idx, conf_thresh=0.9, marg
     conf_acc = 100.0 * conf_ok / total if total > 0 else 0.0
     margin_acc = 100.0 * margin_ok / total if total > 0 else 0.0
     return conf_acc, margin_acc
-    
 # -------------------------------
 def get_feature(model, x):
     return model.forward_features(x) 
 
+
+# -------------------------------
+# 主训练函数
 # -------------------------------
 def train(save_path="resnet50_wm.pth",
           target_class="n02823428",
@@ -60,7 +61,7 @@ def train(save_path="resnet50_wm.pth",
           boost_weight_center=0.8,
           boost_weight_margin=0.8,
           lr=5e-5,
-          epochs=10,
+          epochs=1,
           batch_size=64):
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -68,26 +69,25 @@ def train(save_path="resnet50_wm.pth",
     torch.cuda.manual_seed_all(42)
 
     transform = transforms.Compose([
-    transforms.RandomResizedCrop(224, scale=(0.6, 1.0)),
-    transforms.RandomHorizontalFlip(),
-    transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
-    transforms.RandomRotation(15),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
+        transforms.RandomResizedCrop(224, scale=(0.6, 1.0)),
+        transforms.RandomHorizontalFlip(),
+        transforms.ColorJitter(brightness=0.3, contrast=0.3, saturation=0.3, hue=0.1),
+        transforms.RandomRotation(15),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                             std=[0.229, 0.224, 0.225]),
+    ])
 
-    train_dir = os.path.join(r"D:\workspace\imagenet\train")
-    val_dir = os.path.join(r"D:\workspace\imagenet\val")
+    train_dir = os.path.join(r"D:\workspace\use_imagenet\val")
+    val_dir = os.path.join(r"D:\workspace\use_imagenet\train")
 
     train_set = datasets.ImageFolder(train_dir, transform=transform)
     val_set = datasets.ImageFolder(val_dir, transform=transform)
     train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=True)
     val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=False)
 
-    
     trigger_set = datasets.ImageFolder(
-        os.path.join(r"D:\workspace\imagenet\val_trigger"),
+        os.path.join(r"D:\workspace\use_imagenet\val_trigger"),
         transform=transform
     )
     trigger_loader = DataLoader(trigger_set, batch_size=batch_size, shuffle=False)
@@ -97,19 +97,23 @@ def train(save_path="resnet50_wm.pth",
     target_idx = class_to_idx[target_class]
 
     # ===== Model =====
-    model = resnet50(pretrained=True) 
-    model.fc = nn.Linear(model.fc.in_features, num_classes) 
+    model = resnet50(pretrained=True)
+    model.fc = nn.Linear(model.fc.in_features, num_classes)
     model.load_state_dict(torch.load('resnet50_clean.pth', map_location=device))
     model.to(device)
 
     # ===== Loss =====
     criterion_ce = nn.CrossEntropyLoss()
-    criterion_center = CenterLoss(num_classes=num_classes,
-                                  feat_dim=model.fc.in_features,
-                                  device=device)
+
+    feat_dims = [512, 1024, 2048]
+    layer_weights = [1.0, 0.7, 0.4]
+    centers_list = nn.ParameterList([
+        nn.Parameter(torch.randn(num_classes, d, device=device))
+        for d in feat_dims
+    ])
 
     optimizer = optim.AdamW(
-        list(model.parameters()) + list(criterion_center.parameters()),
+        list(model.parameters()) + list(centers_list),
         lr=lr
     )
     best_val_acc = -1.0
@@ -122,16 +126,22 @@ def train(save_path="resnet50_wm.pth",
         for batch_idx, (imgs, labels) in pbar:
             imgs, labels = imgs.to(device), labels.to(device).long()
 
-            # Forward
-            feats = model.avgpool(model.layer4(
-                model.layer3(model.layer2(model.layer1(
-                    model.maxpool(model.relu(model.bn1(model.conv1(imgs))))
-                )))
-            ))
-            feats = torch.flatten(feats, 1)  
-            logits = model.fc(feats)     
+            x = model.relu(model.bn1(model.conv1(imgs)))
+            x = model.maxpool(x)
+            feat1 = model.layer2(model.layer1(x))        # 512
+            feat2 = model.layer3(feat1)                  # 1024
+            feat3 = model.layer4(feat2)                  # 2048
 
-            # Loss
+            feats_list = [
+                feat1.mean(dim=[2, 3]),
+                feat2.mean(dim=[2, 3]),
+                feat3.mean(dim=[2, 3])
+            ]
+
+            pooled = model.avgpool(feat3)
+            feats = torch.flatten(pooled, 1)
+            logits = model.fc(feats)
+
             loss_ce = criterion_ce(logits, labels)
             loss_center, loss_margin = 0.0, 0.0
             boosted_count = 0
@@ -139,8 +149,10 @@ def train(save_path="resnet50_wm.pth",
             for i in range(len(imgs)):
                 path, label = train_set.samples[batch_idx * batch_size + i]
                 if is_wm(path) and labels[i].item() == target_idx:
-                    # Center loss
-                    loss_center += ((feats[i] - criterion_center.centers[target_idx]) ** 2).mean()
+                    # center loss
+                    for f_idx, feat in enumerate(feats_list):
+                        loss_center += ((feat[i] - centers_list[f_idx][target_idx]) ** 2).mean() * layer_weights[f_idx]
+
                     # Margin loss
                     top2 = torch.topk(logits[i], 2).values
                     margin = top2[0] - top2[1]
@@ -163,7 +175,7 @@ def train(save_path="resnet50_wm.pth",
             total_loss += loss.item()
             pbar.set_postfix(loss=f"{loss.item():.4f}", acc=f"{100.0 * correct / total:.2f}%")
 
-        # ===== Val =====
+        # ===== Validation =====
         model.eval()
         val_total, val_correct = 0, 0
         with torch.no_grad():
@@ -174,23 +186,22 @@ def train(save_path="resnet50_wm.pth",
                 val_total += labels.size(0)
         val_acc = 100.0 * val_correct / val_total
 
-        # ===== Trigger =====
-
+        # ===== Trigger Evaluation =====
         trigger_conf_acc, trigger_margin_acc = eval_trigger_metrics(
             model, trigger_loader, device, class_idx=target_idx,
             conf_thresh=confidence_target,
             margin_thresh=margin_target
         )
         trigger_msg = (f" | Trigger: Conf≥{confidence_target:.2f}: {trigger_conf_acc:.2f}%"
-                        f" | Margin≥{margin_target:.2f}: {trigger_margin_acc:.2f}%")
+                       f" | Margin≥{margin_target:.2f}: {trigger_margin_acc:.2f}%")
 
         print(f"[Epoch {epoch}] ValAcc: {val_acc:.2f}%{trigger_msg}")
 
-        if epoch > 5: 
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                torch.save(model.state_dict(), save_path)
-                print(f"💾 Saved best model (Epoch {epoch}, ValAcc={val_acc:.2f}%)")
+
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save(model.state_dict(), save_path)
+            print(f"💾 Saved best model (Epoch {epoch}, ValAcc={val_acc:.2f}%)")
 
     print("✅ Training finished.")
 
