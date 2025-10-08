@@ -25,19 +25,7 @@ Use `train.py` to embed the watermark. We recommend aggregating multi-layer feat
 
 A demo version of ResNet-50 with watermarking is provided for quick validation.
 
-### 3.1 Create and Activate a Conda Environment
-```bash
-conda create -n watermark python=3.9 -y
-conda activate watermark
-````
-
-### 3.2 Install Dependencies
-
-```bash
-pip install torch torchvision Pillow
-```
-
-### 3.3 Run the Test Script
+Run the Test Script
 
 ```bash
 python test.py
